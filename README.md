@@ -59,7 +59,7 @@ The application features an intuitive graphical interface that simplifies the do
 - **Quality**: Resolution (video) or bitrate (audio)
 - **Subtitles**: Download and embed subtitles if available
 - **Cookies**: Borrow browser cookies for accessing restricted content
-- More in About (?)
+- *More in About (?)*
 
 ## ⚠️ Signature Warning
 
@@ -76,6 +76,13 @@ Windows Defender SmartScreen has stopped an unrecognized app from starting
 3. The application will launch normally
 
 The source code is publicly available on GitHub for your review and verification. You can also compile it yourself using the provided `uvd.spec` file with PyInstaller if you prefer.
+
+## 🛠️ Compiling from Source
+If you want to compile the application yourself, make sure you have Python and PyInstaller installed, then run:
+
+```bash
+pyinstaller --clean uvd.spec
+```
 
 ## 📋 System Requirements
 
