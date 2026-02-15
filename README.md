@@ -28,7 +28,7 @@ The application features an intuitive graphical interface that simplifies the do
 
 
 🎨 **User Experience**
-- Dark, modern UI with responsive design
+- Modern UI with responsive design
 - One-click folder access to downloaded files
 
 
@@ -107,7 +107,7 @@ You are free to:
 - ✅ Include in other projects
 
 With the condition of:
-- 📋 Including the original license and copyright notice
+- 📋 Including the original license and copyright notice 
 
 ---
 
