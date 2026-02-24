@@ -1,7 +1,5 @@
 # Universal Video Downloader
 
-> A sleek, modern desktop application for downloading videos and extracting audio from your favorite platforms.
-
 ![UVD App Screenshot](assets/screenshot.png)
 
 ## About
@@ -12,84 +10,59 @@ The application features an intuitive graphical interface that simplifies the do
 
 ## Features
 
-✨ **Core Functionality**
-- Download videos in multiple formats and resolutions
-- Extract audio with various codec options (MP3, M4A, FLAC, OPUS, WAV)
-- Fine-grained quality control (resolution, FPS)
-- Automatic subtitle downloading and embedding
-- System info display (FFmpeg status, yt-dlp version)
-- Smooth format/quality selection with dynamic filtering
-- Real-time progress tracking with download speed and size info
-- Disk space monitoring and custom download folder selection
-
-🔧 **Advanced Options**
+- Download videos in available formats and resolutions
+- Extract audio(MP3, M4A, FLAC, OPUS, WAV)
+- Ability to choose preferred framerate (if available)
+- System info display (FFmpeg status, yt-dlp version, disk space)
+- Customizable save location
 - Browser cookie integration (Chrome, Edge, Firefox, Opera) for age-restricted content
-- FFmpeg postprocessing for metadata and thumbnail embedding
-
-
-🎨 **User Experience**
-- Modern UI with responsive design
-- One-click folder access to downloaded files
-
 
 ## How to Use
 
-### 🚀 Quick Start
+### Getting Started
 
 1. **Download** the latest release from the [Releases](../../releases) page
 2. **Extract** the `.exe` file to your preferred location
 3. **Run** the application - no installation needed
 
-### 📋 Step-by-Step
+### Downloading Videos
 
-| Step | Action |
-|------|--------|
-| 1 | Paste a video link from any supported platform |
-| 2 | Click "Fetch" to retrieve available formats |
-| 3 | Choose between **Video** or **Audio** mode |
-| 4 | Select desired **Format** and **Quality** |
-| 5 | Optional: Enable subtitles and browser cookies |
-| 6 | Click "DOWNLOAD" |
+1. Paste a video link from any supported platform
+2. Click "Fetch" to retrieve available formats
+3. Choose between **Video** or **Audio** mode
+4. Select desired **Format** and **Quality**
+5. Optional: Enable subtitles and browser cookies
+6. Click "DOWNLOAD"
 
-### ⚙️ Settings Explained
+### Settings Explained
 
-- **Type**: Choose between downloading video or extracting audio only
-- **Format**: Select video container/codec or audio codec
-- **FPS**: Preferred framerate (if unavailable, best alternative is auto-selected)
-- **Quality**: Resolution (video) or bitrate (audio)
-- **Subtitles**: Download and embed subtitles if available
-- **Cookies**: Borrow browser cookies for accessing restricted content
-- *More in About (?)*
+- Click the "?" for detailed explanations of each setting.
 
-## ⚠️ Signature Warning
+## Signature Warning
 
 This application is **not code-signed**. When you download and run the `.exe` file, Windows may display security warnings such as:
 
 ```
-Windows Defender SmartScreen has stopped an unrecognized app from starting
+Windows Defender SmartScreen prevents an unrecognized app from starting. Running this app might put your PC at risk.
 ```
 
-**This is normal.** Code signing certificates are expensive and required for enterprise distributions. To bypass this warning:
+**This is normal.** Code signing certificates are expensive and I'm not paying for that. To continue:
 
-1. Click **"More info"** on the warning dialog
-2. Click **"Run anyway"** at the bottom
+1. Click **"More info"** 
+2. Click **"Run anyway"**
 3. The application will launch normally
 
-The source code is publicly available on GitHub for your review and verification. You can also compile it yourself using the provided `uvd.spec` file with PyInstaller if you prefer.
-
-## 🛠️ Compiling from Source
+## Compiling from Source
 If you want to compile the application yourself, make sure you have Python and PyInstaller installed, then run:
 
 ```bash
 pyinstaller --clean uvd.spec
 ```
 
-## 📋 System Requirements
+## System Requirements
 
-- **Windows** 7 or newer (x64)
 - **FFmpeg** (optional but recommended for best results)
   - Bundled in the portable package, or
-  - Available via system PATH, or
   - Download from:
     [ffmpeg.org](https://ffmpeg.org/download.html)
     or via cmd using winget:
@@ -97,31 +70,23 @@ pyinstaller --clean uvd.spec
     winget install ffmpeg
     ```
 
-## 📄 License
 
-This project is licensed under the **MIT License**
+## License: [MIT License](LICENSE)
 
 You are free to:
-- ✅ Use for personal and commercial purposes
-- ✅ Modify and distribute
-- ✅ Include in other projects
+- Use for personal and commercial purposes
+- Modify and distribute
+- Include in other projects
 
-With the condition of:
-- 📋 Including the original license and copyright notice 
-
----
-
-## 🙏 Credits
+## Credits
 
 Built with:
 - [PyQt6](https://www.riverbankcomputing.com/software/pyqt/) - GUI Framework
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) - Video Downloader
 - [FFmpeg](https://ffmpeg.org/) - Media Processor
 
-## 🐛 Issues & Feedback
+## Issues & Feedback
 
 Found a bug or have a suggestion? Please [open an issue](../../issues) on GitHub!
 
----
-
-**Happy downloading! 🎉**
+**Happy downloading!**
