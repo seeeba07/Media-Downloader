@@ -30,6 +30,10 @@ from .utils import get_disk_space, get_ffmpeg_location, resource_path
 from .workers import DownloadWorker, InfoWorker
 
 
+# This file defines the main window of the Universal Video Downloader application.
+# It contains the UI layout, event handlers, and logic for fetching video information and downloading videos.
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()

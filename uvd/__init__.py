@@ -1,1 +1,1 @@
-"""Universal Video Downloader package."""
+# Universal Video Downloader package
