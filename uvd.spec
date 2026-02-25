@@ -2,9 +2,9 @@
 
 
 a = Analysis(
-    ['uvd.py'],
+    ['uvd\\app.py'],
     pathex=[],
-    binaries=[('ffmpeg.exe', '.')],
+    binaries=[('ffmpeg.exe', '.'), ('ffprobe.exe', '.')],
     datas=[('icon.ico', '.')],
     hiddenimports=[],
     hookspath=[],
