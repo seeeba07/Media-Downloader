@@ -1,12 +1,10 @@
-# Universal Video Downloader
+# Media Downloader
 
-![UVD App Screenshot](assets/screenshot.png)
+![Media Downloader App Screenshot](assets/screenshot.png)
 
 ## About
 
-**Universal Video Downloader** is a user-friendly desktop application built with PyQt6 that allows you to download videos and extract audio from various online platforms. Powered by `yt-dlp`, it supports YouTube, TikTok, Instagram, and many other video hosting services.
-
-The application features an intuitive graphical interface that simplifies the download process while providing advanced options for power users.
+**Media Downloader** is a user-friendly desktop application built with PyQt6 that allows you to download videos and extract audio from various online platforms. Powered by `yt-dlp`, it supports YouTube, TikTok, Instagram, and many other video hosting services.
 
 ## Features
 
@@ -15,6 +13,7 @@ The application features an intuitive graphical interface that simplifies the do
 - Ability to choose preferred framerate (if available)
 - System info display (FFmpeg status, yt-dlp version, disk space)
 - Customizable save location
+- Subtitle downloading (if available)
 
 ## How to Use
 
@@ -51,10 +50,10 @@ Windows Defender SmartScreen prevents an unrecognized app from starting. Running
 3. The application will launch normally
 
 ## Compiling from Source
-If you want to compile the application yourself, download the `uvd.spec` file and make sure you have Python and PyInstaller installed, then run:
+If you want to compile the application yourself, download the `mdl.spec` file and make sure you have Python and PyInstaller installed, then run:
 
 ```bash
-pyinstaller --clean uvd.spec
+pyinstaller --clean mdl.spec
 ```
 
 ## System Requirements

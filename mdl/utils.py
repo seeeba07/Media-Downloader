@@ -2,7 +2,7 @@ import os
 import shutil
 import sys
 
-# Utility functions for UVD, including FFmpeg location and size formatting.
+# Utility functions for Media Downloader, including FFmpeg location and size formatting.
 
 # Cache for FFmpeg location to avoid repeated disk I/O
 _CACHED_FFMPEG = None

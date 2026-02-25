@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['uvd\\app.py'],
+    ['mdl\\app.py'],
     pathex=[],
     binaries=[('ffmpeg.exe', '.'), ('ffprobe.exe', '.')],
     datas=[('icon.ico', '.')],
@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='uvd',
+    name='media_downloader',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

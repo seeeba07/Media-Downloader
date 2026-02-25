@@ -30,14 +30,14 @@ from .utils import get_disk_space, get_ffmpeg_location, resource_path
 from .workers import DownloadWorker, InfoWorker
 
 
-# This file defines the main window of the Universal Video Downloader application.
+# This file defines the main window of the Media Downloader application.
 # It contains the UI layout, event handlers, and logic for fetching video information and downloading videos.
 
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Universal Video Downloader")
+        self.setWindowTitle("Media Downloader")
         self.resize(850, 520)
 
         icon_path = resource_path("icon.ico")
@@ -71,7 +71,7 @@ class MainWindow(QMainWindow):
 
         # Header
         header_layout = QHBoxLayout()
-        title_lbl = QLabel("Universal Video Downloader")
+        title_lbl = QLabel("Media Downloader")
         title_lbl.setStyleSheet("font-size: 24px; font-weight: bold; color: #64b5f6;")
         title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -486,7 +486,7 @@ class MainWindow(QMainWindow):
         is_audio = self.rb_audio.isChecked()
         file_name_suffix = None
 
-        temp_dir = tempfile.mkdtemp(prefix="uvd_tmp_")
+        temp_dir = tempfile.mkdtemp(prefix="media_downloader_tmp_")
 
         ydl_opts = {
             'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
