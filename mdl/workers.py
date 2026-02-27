@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import time
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -86,6 +87,8 @@ class DownloadWorker(QThread):
         self.download_folder = download_folder
         self.file_name_suffix = file_name_suffix
         self.is_cancelled = False
+        self._last_progress_emit_time = 0.0
+        self._last_progress_percent = -1.0
 
     def run(self):
         import yt_dlp
@@ -107,19 +110,31 @@ class DownloadWorker(QThread):
                 self.error_signal.emit("⛔ Cancelled.")
                 return
 
-            files = [
-                os.path.join(self.temp_dir, f)
-                for f in os.listdir(self.temp_dir)
-                if os.path.isfile(os.path.join(self.temp_dir, f))
-            ]
-
             target = None
-            for f in files:
-                if f.endswith(f".{self.target_ext}"):
-                    target = f
-                    break
-            if not target and files:
-                target = max(files, key=os.path.getsize)
+            largest_file = None
+            largest_size = -1
+
+            with os.scandir(self.temp_dir) as entries:
+                for entry in entries:
+                    if not entry.is_file():
+                        continue
+
+                    path = entry.path
+                    if path.endswith(f".{self.target_ext}"):
+                        target = path
+                        break
+
+                    try:
+                        size = entry.stat().st_size
+                    except OSError:
+                        continue
+
+                    if size > largest_size:
+                        largest_size = size
+                        largest_file = path
+
+            if not target:
+                target = largest_file
 
             if target:
                 final_path = os.path.join(self.download_folder, os.path.basename(target))
@@ -155,11 +170,25 @@ class DownloadWorker(QThread):
     def progress_hook(self, d):
         if self.is_cancelled:
             raise Exception("Cancelled")
-        if d['status'] == 'downloading':
+        status = d.get('status')
+        if status == 'downloading':
             try:
                 total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
                 downloaded = d.get('downloaded_bytes', 0)
                 percent = (downloaded / total * 100) if total > 0 else 0
+
+                now = time.monotonic()
+                should_emit = (
+                    self._last_progress_emit_time == 0.0
+                    or (now - self._last_progress_emit_time) >= 0.25
+                    or abs(percent - self._last_progress_percent) >= 0.5
+                    or (total > 0 and downloaded >= total)
+                )
+                if not should_emit:
+                    return
+
+                self._last_progress_emit_time = now
+                self._last_progress_percent = percent
 
                 # Clean up ANSI codes
                 spd = re.sub(r'\x1b\[[0-9;]*m', '', d.get('_speed_str', 'N/A'))
@@ -168,7 +197,7 @@ class DownloadWorker(QThread):
                 self.progress_signal.emit(percent, msg)
             except Exception:
                 pass
-        elif d['status'] == 'finished':
+        elif status == 'finished':
             self.progress_signal.emit(100, "Processing / Converting...")
 
     def cancel(self):
