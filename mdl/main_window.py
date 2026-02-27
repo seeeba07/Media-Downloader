@@ -72,7 +72,8 @@ class MainWindow(QMainWindow):
         # Header
         header_layout = QHBoxLayout()
         title_lbl = QLabel("Media Downloader")
-        title_lbl.setStyleSheet("font-size: 24px; font-weight: bold; color: #64b5f6;")
+        title_lbl.setObjectName("TitleLabel")
+        title_lbl.setStyleSheet("font-size: 24px; font-weight: 700;")
         title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.btn_help = QPushButton("?")
@@ -154,6 +155,7 @@ class MainWindow(QMainWindow):
 
         # Quality
         quality_layout = QHBoxLayout()
+        quality_layout.setContentsMargins(0, 2, 0, 2)
         quality_layout.addWidget(QLabel("Quality:"))
         self.cb_quality = QComboBox()
         self.cb_quality.setMinimumHeight(control_height - 2)
@@ -162,8 +164,9 @@ class MainWindow(QMainWindow):
         layout.addLayout(quality_layout)
 
         self.lbl_output_indicator = QLabel("Output file: -")
+        self.lbl_output_indicator.setObjectName("OutputIndicator")
         self.lbl_output_indicator.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.lbl_output_indicator.setStyleSheet("color: #8a8a8a; font-size: 11px;")
+        self.lbl_output_indicator.setStyleSheet("font-size: 11px;")
         layout.addWidget(self.lbl_output_indicator)
 
         # Folder
@@ -184,13 +187,15 @@ class MainWindow(QMainWindow):
 
         # Status
         self.lbl_system_info = QLabel("Loading info...")
+        self.lbl_system_info.setObjectName("SystemInfoLabel")
         self.lbl_system_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_system_info.setStyleSheet("color: #8a8a8a; font-size: 11px;")
+        self.lbl_system_info.setStyleSheet("font-size: 11px;")
         layout.addWidget(self.lbl_system_info)
 
         self.lbl_status = QLabel("Ready")
+        self.lbl_status.setObjectName("StatusLabel")
         self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600;")
+        self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #b8c2d1;")
         layout.addWidget(self.lbl_status)
 
         # Progress
@@ -205,13 +210,13 @@ class MainWindow(QMainWindow):
         btn_layout = QHBoxLayout()
         self.btn_download = QPushButton("DOWNLOAD")
         self.btn_download.setMinimumHeight(50)
-        self.btn_download.setStyleSheet("background-color: #2f8a3a; color: white; font-weight: bold; font-size: 14px; border-radius: 6px;")
+        self.btn_download.setStyleSheet("background-color: #2f8a3a; color: white; font-weight: 600; font-size: 13px; border-radius: 6px;")
         self.btn_download.clicked.connect(self.start_download)
         self.btn_download.setEnabled(False)
 
         self.btn_cancel = QPushButton("CANCEL")
         self.btn_cancel.setMinimumHeight(50)
-        self.btn_cancel.setStyleSheet("background-color: #b63a3a; color: white; font-weight: bold; font-size: 14px; border-radius: 6px;")
+        self.btn_cancel.setStyleSheet("background-color: #b63a3a; color: white; font-weight: 600; font-size: 13px; border-radius: 6px;")
         self.btn_cancel.clicked.connect(self.cancel_download)
         self.btn_cancel.setEnabled(False)
 
@@ -221,49 +226,63 @@ class MainWindow(QMainWindow):
 
     def apply_stylesheet(self):
         is_light_mode = self.palette().color(self.backgroundRole()).lightness() > 128
+        accent_color = "#5aa9ff"
+        accent_soft = "#3f6d9e"
 
         if is_light_mode:
             # Light mode colors
             bg_color = "#f5f5f5"
             text_color = "#000000"
-            border_color = "#cccccc"
+            border_color = "#c7ced8"
             input_bg = "#ffffff"
-            btn_bg = "#e1e1e1"
-            btn_hover = "#d4d4d4"
+            btn_bg = "#e7ebf0"
+            btn_hover = "#dde4ec"
             btn_text = "#000000"
+            muted_text = "#5e6a78"
+            placeholder = "#7e8793"
         else:
             # Dark mode colors
-            bg_color = "#2b2b2b"
-            text_color = "#ffffff"
-            border_color = "#555"
-            input_bg = "#3a3a3a"
-            btn_bg = "#444444"
-            btn_hover = "#555555"
+            bg_color = "#25282e"
+            text_color = "#e5e9ef"
+            border_color = "#4a5260"
+            input_bg = "#31363f"
+            btn_bg = "#3b424d"
+            btn_hover = "#495261"
             btn_text = "#ffffff"
+            muted_text = "#97a3b3"
+            placeholder = "#7f8b9a"
 
         stylesheet = f"""
             QMainWindow {{ background-color: {bg_color}; }}
             QWidget {{ color: {text_color}; font-family: 'Segoe UI', sans-serif; font-size: 13px; }}
             QMessageBox {{ background-color: {bg_color}; }}
             QMessageBox QLabel {{ color: {text_color}; }}
-            QLineEdit {{ background-color: {input_bg}; border: 1px solid {border_color}; border-radius: 4px; padding: 5px; color: {text_color}; }}
-            QComboBox {{ background-color: {input_bg}; border: 1px solid {border_color}; border-radius: 4px; padding: 5px; color: {text_color}; }}
+            QLineEdit {{ background-color: {input_bg}; border: 1px solid {border_color}; border-radius: 5px; padding: 6px; color: {text_color}; }}
+            QLineEdit:focus {{ border: 1px solid {accent_color}; }}
+            QLineEdit::placeholder {{ color: {placeholder}; }}
+            QComboBox {{ background-color: {input_bg}; border: 1px solid {border_color}; border-radius: 5px; padding: 6px; color: {text_color}; }}
+            QComboBox:focus {{ border: 1px solid {accent_color}; }}
             QComboBox::drop-down {{ border: 0px; }}
             QPushButton {{
                 background-color: {btn_bg};
                 color: {btn_text};
                 border: 1px solid {border_color};
-                border-radius: 4px;
-                padding: 5px;
+                border-radius: 5px;
+                padding: 6px;
                 }}
             QPushButton:hover {{background-color: {btn_hover}; }}
+            QPushButton:focus {{ border: 1px solid {accent_color}; }}
             QPushButton:disabled {{background-color: {input_bg}; color: {border_color}; }}
             QCheckBox {{ spacing: 8px; }}
             QCheckBox::indicator {{ width: 18px; height: 18px; border: 1px solid {border_color}; border-radius: 3px; background: {input_bg}; }}
-            QCheckBox::indicator:checked {{ background-color: #64b5f6; border-color: #64b5f6; }}
+            QCheckBox::indicator:checked {{ background-color: {accent_color}; border-color: {accent_color}; }}
             QProgressBar {{ border: 1px solid {border_color}; border-radius: 4px; text-align: center; background-color: {input_bg}; }}
-            QProgressBar::chunk {{ background-color: #1976d2; border-radius: 3px; }}
-            QFrame#SettingsFrame {{ background-color: {bg_color}; border-radius: 8px; padding: 5px; }}
+            QProgressBar::chunk {{ background-color: {accent_color}; border-radius: 3px; }}
+            QFrame#SettingsFrame {{ background-color: {bg_color}; border: 1px solid {border_color}; border-radius: 8px; padding: 6px; }}
+            QLabel#TitleLabel {{ color: {accent_color}; }}
+            QLabel#SystemInfoLabel {{ color: {muted_text}; }}
+            QLabel#OutputIndicator {{ color: {muted_text}; }}
+            QLabel#StatusLabel {{ color: {muted_text}; }}
         """
         self.setStyleSheet(stylesheet)
 
@@ -276,7 +295,7 @@ class MainWindow(QMainWindow):
             return
 
         self.lbl_status.setText("Fetching information...")
-        self.lbl_status.setStyleSheet("")
+        self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #b8c2d1;")
         self.fetch_btn.setEnabled(False)
         self.btn_download.setEnabled(False)
 
@@ -291,11 +310,13 @@ class MainWindow(QMainWindow):
         self.subtitle_languages = subtitle_languages
         self.set_subtitle_options(subtitle_languages)
         self.lbl_status.setText(f"Loaded: {info.get('title')}")
+        self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #9cc06b;")
         self.fetch_btn.setEnabled(True)
         self.update_ui_state()
 
     def on_info_error(self, err):
         self.lbl_status.setText(f"Error: {err[:50]}...")
+        self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #d98787;")
         self.fetch_btn.setEnabled(True)
         self.subtitle_languages = []
         self.set_subtitle_options([])
@@ -416,18 +437,18 @@ class MainWindow(QMainWindow):
         if self.rb_audio.isChecked():
             audio_ext = self.cb_format.currentText() or "audio"
             self.lbl_output_indicator.setText(f"Output file: .{audio_ext}")
-            self.lbl_output_indicator.setStyleSheet("color: #777; font-size: 11px;")
+            self.lbl_output_indicator.setStyleSheet("font-size: 11px; color: #8a93a1;")
             return
 
         if self.cb_subtitles.currentData() is not None:
             self.lbl_output_indicator.setText("Output file: .mkv (subtitles selected)")
-            self.lbl_output_indicator.setStyleSheet("color: #64b5f6; font-size: 11px;")
+            self.lbl_output_indicator.setStyleSheet("font-size: 11px; color: #5aa9ff;")
             return
 
         fmt_data = self.cb_format.currentData()
         video_ext = fmt_data[0] if fmt_data else "mp4"
         self.lbl_output_indicator.setText(f"Output file: .{video_ext}")
-        self.lbl_output_indicator.setStyleSheet("color: #777; font-size: 11px;")
+        self.lbl_output_indicator.setStyleSheet("font-size: 11px; color: #8a93a1;")
 
     def on_fps_changed(self):
         self.cb_quality.blockSignals(True)
@@ -641,7 +662,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
         self.lbl_status.setText("Starting download...")
-        self.lbl_status.setStyleSheet("")
+        self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #b8c2d1;")
 
         self.download_worker = DownloadWorker(url, ydl_opts, temp_dir, target_ext, self.download_folder, file_name_suffix)
         self.download_worker.progress_signal.connect(self.update_progress)
@@ -655,14 +676,14 @@ class MainWindow(QMainWindow):
 
     def on_download_finished(self, msg):
         self.lbl_status.setText(msg)
-        self.lbl_status.setStyleSheet("color: #4caf50;")
+        self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #8fbf8f;")
         self.finish_download_ui()
         QMessageBox.information(self, "Finished", msg)
         self.update_system_info()
 
     def on_download_error(self, err):
         self.lbl_status.setText(err)
-        self.lbl_status.setStyleSheet("color: #f44336;")
+        self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #d98787;")
         self.finish_download_ui()
 
     def finish_download_ui(self):
