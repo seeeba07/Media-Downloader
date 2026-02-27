@@ -8,6 +8,7 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
     QButtonGroup,
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFrame,
@@ -35,7 +36,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Media Downloader")
-        self.resize(850, 520)
+        self.setFixedSize(850, 520)
 
         icon_path = resource_path("icon.ico")
         if os.path.exists(icon_path):
@@ -81,6 +82,9 @@ class MainWindow(QMainWindow):
         self.btn_help.setFixedSize(30, 30)
         self.btn_help.clicked.connect(self.show_app_help)
 
+        left_header_spacer = QWidget()
+        left_header_spacer.setFixedSize(30, 30)
+        header_layout.addWidget(left_header_spacer)
         header_layout.addStretch()
         header_layout.addWidget(title_lbl)
         header_layout.addStretch()
@@ -103,16 +107,18 @@ class MainWindow(QMainWindow):
         url_layout.addWidget(self.fetch_btn)
         layout.addLayout(url_layout)
 
-        # Settings
+        # Top settings: Type + Playlist
         settings_frame = QFrame()
         settings_frame.setObjectName("SettingsFrame")
         settings_layout = QHBoxLayout(settings_frame)
-        settings_layout.setContentsMargins(12, 10, 12, 10)
-        settings_layout.setSpacing(10)
+        settings_layout.setContentsMargins(10, 8, 10, 8)
+        settings_layout.setSpacing(8)
 
         self.rb_group = QButtonGroup()
         self.rb_video = QRadioButton("Video")
         self.rb_audio = QRadioButton("Audio")
+        self.rb_video.setToolTip("Download video with audio.")
+        self.rb_audio.setToolTip("Extract audio only (no video).")
         self.rb_video.setChecked(True)
         self.rb_group.addButton(self.rb_video)
         self.rb_group.addButton(self.rb_audio)
@@ -121,54 +127,81 @@ class MainWindow(QMainWindow):
         settings_layout.addWidget(QLabel("Type:"))
         settings_layout.addWidget(self.rb_video)
         settings_layout.addWidget(self.rb_audio)
-        settings_layout.addSpacing(15)
+        settings_layout.addSpacing(12)
 
-        self.lbl_format = QLabel("Format:")
-        settings_layout.addWidget(self.lbl_format)
-        self.cb_format = QComboBox()
-        self.cb_format.setMinimumHeight(control_height - 2)
-        self.cb_format.setFixedWidth(150)
-        self.cb_format.currentIndexChanged.connect(self.on_format_changed)
-        settings_layout.addWidget(self.cb_format)
-
-        self.lbl_fps = QLabel("FPS:")
-        settings_layout.addWidget(self.lbl_fps)
-        self.cb_fps = QComboBox()
-        self.cb_fps.setMinimumHeight(control_height - 2)
-        self.cb_fps.setFixedWidth(72)
-        self.cb_fps.currentIndexChanged.connect(self.on_fps_changed)
-        settings_layout.addWidget(self.cb_fps)
-
-        self.lbl_subtitles = QLabel("Subtitles:")
-        settings_layout.addWidget(self.lbl_subtitles)
-        self.cb_subtitles = QComboBox()
-        self.cb_subtitles.setMinimumHeight(control_height - 2)
-        self.cb_subtitles.setFixedWidth(180)
-        self.cb_subtitles.currentIndexChanged.connect(self.update_output_indicator)
-        settings_layout.addWidget(self.cb_subtitles)
-        self.set_subtitle_options([])
-
-        settings_layout.addSpacing(15)
+        self.cb_download_playlist = QCheckBox("Playlist")
+        self.cb_download_playlist.setToolTip("When enabled, playlist URLs download all items into a playlist folder.")
+        settings_layout.addWidget(self.cb_download_playlist)
 
         settings_layout.addStretch()
 
+        self.lbl_output_indicator = QLabel("Output: -")
+        self.lbl_output_indicator.setObjectName("OutputIndicator")
+        self.lbl_output_indicator.setFixedWidth(220)
+        self.lbl_output_indicator.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
+        self.lbl_output_indicator.setToolTip("Shows the final output extension.")
+        settings_layout.addWidget(self.lbl_output_indicator)
+
         layout.addWidget(settings_frame)
 
-        # Quality
-        quality_layout = QHBoxLayout()
-        quality_layout.setContentsMargins(0, 2, 0, 2)
-        quality_layout.addWidget(QLabel("Quality:"))
-        self.cb_quality = QComboBox()
-        self.cb_quality.setMinimumHeight(control_height - 2)
-        self.cb_quality.setEnabled(False)
-        quality_layout.addWidget(self.cb_quality, 1)
-        layout.addLayout(quality_layout)
+        # Lower settings: format / fps / quality / subtitles
+        options_frame = QFrame()
+        options_frame.setObjectName("SettingsFrame")
+        options_layout = QHBoxLayout(options_frame)
+        options_layout.setContentsMargins(10, 8, 10, 8)
+        options_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        
+        options_layout.setSpacing(6)
 
-        self.lbl_output_indicator = QLabel("Output file: -")
-        self.lbl_output_indicator.setObjectName("OutputIndicator")
-        self.lbl_output_indicator.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        self.lbl_output_indicator.setStyleSheet("font-size: 11px;")
-        layout.addWidget(self.lbl_output_indicator)
+        self.lbl_quality = QLabel("Quality:")
+        self.lbl_quality.setFixedWidth(50)
+        self.lbl_quality.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+        self.lbl_quality.setToolTip("Select resolution (video) or bitrate (audio).")
+        options_layout.addWidget(self.lbl_quality)
+        self.cb_quality = QComboBox()
+        self.cb_quality.setFixedWidth(150)
+        self.cb_quality.setToolTip("Select resolution (video) or bitrate (audio).")
+        self.cb_quality.setEnabled(False)
+        options_layout.addWidget(self.cb_quality)
+
+        self.lbl_format = QLabel("Format:")
+        self.lbl_format.setFixedWidth(50)
+        self.lbl_format.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
+        self.lbl_format.setToolTip("Choose output format/container.")
+        options_layout.addWidget(self.lbl_format)
+        self.cb_format = QComboBox()
+        self.cb_format.setFixedWidth(150)
+        self.cb_format.setToolTip("Choose output format/container.")
+        self.cb_format.currentIndexChanged.connect(self.on_format_changed)
+        options_layout.addWidget(self.cb_format)
+
+        self.lbl_fps = QLabel("FPS:")
+        self.lbl_fps.setFixedWidth(32)
+        self.lbl_fps.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
+        self.lbl_fps.setToolTip("Choose frame rate for video mode.")
+        options_layout.addWidget(self.lbl_fps)
+        self.cb_fps = QComboBox()
+        self.cb_fps.setFixedWidth(72)
+        self.cb_fps.setToolTip("Choose frame rate for video mode.")
+        self.cb_fps.currentIndexChanged.connect(self.on_fps_changed)
+        options_layout.addWidget(self.cb_fps)
+
+        self.lbl_subtitles = QLabel("Subtitles:")
+        self.lbl_subtitles.setFixedWidth(62)
+        self.lbl_subtitles.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
+        self.lbl_subtitles.setToolTip("Include subtitles in the output file.")
+        options_layout.addWidget(self.lbl_subtitles)
+        self.cb_subtitles = QComboBox()
+        self.cb_subtitles.setFixedWidth(150)
+        self.cb_subtitles.setToolTip("Selecting subtitles changes output container to MKV.")
+        self.cb_subtitles.currentIndexChanged.connect(self.update_output_indicator)
+        options_layout.addWidget(self.cb_subtitles)
+
+        options_layout.addStretch()
+
+        self.set_subtitle_options([])
+
+        layout.addWidget(options_frame)
 
         # Folder
         folder_layout = QHBoxLayout()
@@ -282,7 +315,7 @@ class MainWindow(QMainWindow):
             QFrame#SettingsFrame {{ background-color: {bg_color}; border: 1px solid {border_color}; border-radius: 8px; padding: 6px; }}
             QLabel#TitleLabel {{ color: {accent_color}; }}
             QLabel#SystemInfoLabel {{ color: {muted_text}; }}
-            QLabel#OutputIndicator {{ color: {muted_text}; }}
+            QLabel#OutputIndicator {{ color: {text_color}; font-size: 12px; font-weight: 600; }}
             QLabel#StatusLabel {{ color: {muted_text}; }}
         """
         self.setStyleSheet(stylesheet)
@@ -414,6 +447,8 @@ class MainWindow(QMainWindow):
 
         selected_data = self.cb_format.currentData()
         if not selected_data:
+            self.cb_fps.blockSignals(False)
+            self.update_output_indicator()
             return
 
         sel_ext, sel_codec = selected_data
@@ -437,19 +472,19 @@ class MainWindow(QMainWindow):
 
         if self.rb_audio.isChecked():
             audio_ext = self.cb_format.currentText() or "audio"
-            self.lbl_output_indicator.setText(f"Output file: .{audio_ext}")
-            self.lbl_output_indicator.setStyleSheet("font-size: 11px; color: #8a93a1;")
+            self.lbl_output_indicator.setText(f"Output: .{audio_ext}")
+            self.lbl_output_indicator.setStyleSheet("color: #b8c2d1;")
             return
 
         if self.cb_subtitles.currentData() is not None:
-            self.lbl_output_indicator.setText("Output file: .mkv (subtitles selected)")
-            self.lbl_output_indicator.setStyleSheet("font-size: 11px; color: #5aa9ff;")
+            self.lbl_output_indicator.setText("Output: .mkv")
+            self.lbl_output_indicator.setStyleSheet("color: #7dc0ff;")
             return
 
         fmt_data = self.cb_format.currentData()
         video_ext = fmt_data[0] if fmt_data else "mp4"
-        self.lbl_output_indicator.setText(f"Output file: .{video_ext}")
-        self.lbl_output_indicator.setStyleSheet("font-size: 11px; color: #8a93a1;")
+        self.lbl_output_indicator.setText(f"Output: .{video_ext}")
+        self.lbl_output_indicator.setStyleSheet("color: #b8c2d1;")
 
     def on_fps_changed(self):
         self.cb_quality.blockSignals(True)
@@ -494,7 +529,7 @@ class MainWindow(QMainWindow):
 
     def show_app_help(self):
         help_text = (
-            "<h3>App Features Guide</h3>"
+            "<h3>App Guide</h3>"
             "<ul>"
             "<li><b>Fetch:</b> Retrieving video metadata from the provided URL.</li>"
             "<li><b>Type (Video/Audio):</b> Choose full video download or audio extraction only.</li>"
@@ -504,18 +539,31 @@ class MainWindow(QMainWindow):
             "<li><b>Quality:</b> Choose resolution (video) or bitrate (audio).</li>"
             "<li><b>Output file:</b> Shows final extension. If subtitles are selected in video mode, output changes to <b>.mkv</b>.</li>"
             "<li><b>Filename suffix:</b> Video files include selected resolution and codec at the end (for example [1920x1080 av01]).</li>"
+            "<li><b>Playlist:</b> Off by default. Enable it only when you want to download every item from a playlist URL.</li>"
             "</ul>"
             "<p><i>Note: FFmpeg is recommended for best results and required for some post-processing actions.</i></p>"
         )
         QMessageBox.information(self, "App Help", help_text)
 
-    def _build_base_ydl_opts(self, temp_dir):
+    def _build_base_ydl_opts(self, temp_dir, playlist_mode):
+        if playlist_mode:
+            outtmpl = os.path.join(
+                self.download_folder,
+                '%(playlist_title)s',
+                '%(playlist_index)03d - %(title)s.%(ext)s',
+            )
+            home_path = self.download_folder
+        else:
+            outtmpl = os.path.join(temp_dir, '%(title)s.%(ext)s')
+            home_path = temp_dir
+
         ydl_opts = {
-            'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
-            'paths': {'home': temp_dir},
+            'outtmpl': outtmpl,
+            'paths': {'home': home_path},
             'quiet': True,
             'no_warnings': True,
             'overwrites': True,
+            'noplaylist': not playlist_mode,
         }
 
         loc_ffmpeg = get_ffmpeg_location()
@@ -645,10 +693,13 @@ class MainWindow(QMainWindow):
             return
 
         is_audio = self.rb_audio.isChecked()
+        playlist_mode = self.cb_download_playlist.isChecked()
 
-        temp_dir = tempfile.mkdtemp(prefix="media_downloader_tmp_")
+        temp_dir = None
+        if not playlist_mode:
+            temp_dir = tempfile.mkdtemp(prefix="media_downloader_tmp_")
 
-        ydl_opts = self._build_base_ydl_opts(temp_dir)
+        ydl_opts = self._build_base_ydl_opts(temp_dir, playlist_mode)
 
         target_ext = "mp4"
         file_name_suffix = None
@@ -665,7 +716,15 @@ class MainWindow(QMainWindow):
         self.lbl_status.setText("Starting download...")
         self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #b8c2d1;")
 
-        self.download_worker = DownloadWorker(url, ydl_opts, temp_dir, target_ext, self.download_folder, file_name_suffix)
+        self.download_worker = DownloadWorker(
+            url,
+            ydl_opts,
+            temp_dir,
+            target_ext,
+            self.download_folder,
+            file_name_suffix,
+            playlist_mode=playlist_mode,
+        )
         self.download_worker.progress_signal.connect(self.update_progress)
         self.download_worker.finished_signal.connect(self.on_download_finished)
         self.download_worker.error_signal.connect(self.on_download_error)
