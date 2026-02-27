@@ -52,6 +52,7 @@ class MainWindow(QMainWindow):
 
         self.download_worker = None
         self.info_worker = None
+        self._yt_dlp_version = None
 
         self.setup_ui()
         self.apply_stylesheet()
@@ -475,16 +476,7 @@ class MainWindow(QMainWindow):
         )
         QMessageBox.information(self, "App Help", help_text)
 
-    def start_download(self):
-        url = self.url_input.text().strip()
-        if not url:
-            return
-
-        is_audio = self.rb_audio.isChecked()
-        file_name_suffix = None
-
-        temp_dir = tempfile.mkdtemp(prefix="media_downloader_tmp_")
-
+    def _build_base_ydl_opts(self, temp_dir):
         ydl_opts = {
             'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
             'paths': {'home': temp_dir},
@@ -497,88 +489,141 @@ class MainWindow(QMainWindow):
         if loc_ffmpeg:
             ydl_opts['ffmpeg_location'] = loc_ffmpeg
 
+        return ydl_opts
+
+    def _build_audio_download_options(self, ydl_opts):
+        target_ext = self.cb_format.currentText()
+        bitrate = self.cb_quality.currentData()
+
+        ydl_opts['format'] = 'bestaudio/best'
+        postprocessors = [
+            {
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': target_ext,
+                'preferredquality': bitrate,
+            }
+        ]
+
+        conf = AUDIO_FORMATS.get(target_ext, {})
+        if conf.get('thumb'):
+            postprocessors.append({'key': 'EmbedThumbnail'})
+        if conf.get('meta'):
+            postprocessors.append({'key': 'FFmpegMetadata'})
+
+        ydl_opts['postprocessors'] = postprocessors
+        return target_ext, None
+
+    def _find_selected_video_format(self, selected_id):
+        if selected_id is None:
+            return None
+
+        selected_id_str = str(selected_id)
+        return next(
+            (f for f in self.video_formats if str(f.get('format_id')) == selected_id_str),
+            None,
+        )
+
+    def _build_file_name_suffix(self, selected_format):
+        if not selected_format:
+            return None
+
+        width = selected_format.get('width')
+        height = selected_format.get('height')
+        resolution = f"{width}x{height}" if width and height else None
+
+        codec = selected_format.get('vcodec_clean') or selected_format.get('vcodec')
+        if codec and codec != 'none':
+            codec = codec.split('.')[0]
+        else:
+            codec = None
+
+        if resolution and codec:
+            return f"[{resolution} {codec}]"
+        if resolution:
+            return f"[{resolution}]"
+        if codec:
+            return f"[{codec}]"
+        return None
+
+    def _apply_subtitle_options(self, ydl_opts, selected_subtitle):
+        if selected_subtitle is None:
+            return None
+
+        ydl_opts['merge_output_format'] = 'mkv'
+        ydl_opts['writesubtitles'] = True
+        ydl_opts['embedsubtitles'] = True
+        ydl_opts['writeautomaticsub'] = False
+        ydl_opts['subtitlesformat'] = 'srt/best'
+        ydl_opts['convertsubtitles'] = 'srt'
+        ydl_opts['keepvideo'] = True
+        ydl_opts['compat_opts'] = ['no-keep-subs']
+
+        postprocessors = ydl_opts.setdefault('postprocessors', [])
+        postprocessors.append({'key': 'FFmpegMetadata', 'add_chapters': True})
+        postprocessors.append({'key': 'EmbedThumbnail'})
+        postprocessors.append({'key': 'FFmpegEmbedSubtitle'})
+
+        if selected_subtitle == "__all__":
+            ydl_opts['subtitleslangs'] = self.subtitle_languages
+        else:
+            ydl_opts['subtitleslangs'] = [selected_subtitle]
+
+        return 'mkv'
+
+    def _build_video_download_options(self, ydl_opts):
+        selected_id = self.cb_quality.currentData()
+        fmt_data = self.cb_format.currentData()
+        selected_subtitle = self.cb_subtitles.currentData()
+
         target_ext = "mp4"
+        file_name_suffix = None
+
+        if selected_id and fmt_data:
+            target_ext = fmt_data[0]
+            selected_format = self._find_selected_video_format(selected_id)
+
+            if selected_format and selected_format.get('acodec') != 'none':
+                ydl_opts['format'] = str(selected_id)
+            else:
+                if target_ext == 'mp4':
+                    audio_selector = 'bestaudio[ext=m4a]/bestaudio/best'
+                elif target_ext == 'webm':
+                    audio_selector = 'bestaudio[ext=webm]/bestaudio/best'
+                else:
+                    audio_selector = 'bestaudio/best'
+
+                ydl_opts['format'] = f"{selected_id}+{audio_selector}"
+                ydl_opts['merge_output_format'] = target_ext
+
+            file_name_suffix = self._build_file_name_suffix(selected_format)
+        else:
+            ydl_opts['format'] = 'bestvideo+bestaudio/best'
+            ydl_opts['merge_output_format'] = 'mp4'
+
+        subtitle_target_ext = self._apply_subtitle_options(ydl_opts, selected_subtitle)
+        if subtitle_target_ext:
+            target_ext = subtitle_target_ext
+
+        return target_ext, file_name_suffix
+
+    def start_download(self):
+        url = self.url_input.text().strip()
+        if not url:
+            return
+
+        is_audio = self.rb_audio.isChecked()
+
+        temp_dir = tempfile.mkdtemp(prefix="media_downloader_tmp_")
+
+        ydl_opts = self._build_base_ydl_opts(temp_dir)
+
+        target_ext = "mp4"
+        file_name_suffix = None
 
         if is_audio:
-            target_ext = self.cb_format.currentText()
-            bitrate = self.cb_quality.currentData()
-
-            ydl_opts['format'] = 'bestaudio/best'
-            pps = [{'key': 'FFmpegExtractAudio', 'preferredcodec': target_ext, 'preferredquality': bitrate}]
-
-            conf = AUDIO_FORMATS.get(target_ext, {})
-            if conf.get('thumb'):
-                pps.append({'key': 'EmbedThumbnail'})
-            if conf.get('meta'):
-                pps.append({'key': 'FFmpegMetadata'})
-
-            ydl_opts['postprocessors'] = pps
+            target_ext, file_name_suffix = self._build_audio_download_options(ydl_opts)
         else:
-            selected_id = self.cb_quality.currentData()
-            fmt_data = self.cb_format.currentData()
-            selected_subtitle = self.cb_subtitles.currentData()
-
-            if selected_id and fmt_data:
-                target_ext = fmt_data[0]
-                selected_format = next(
-                    (f for f in self.video_formats if str(f.get('format_id')) == str(selected_id)),
-                    None,
-                )
-
-                if selected_format and selected_format.get('acodec') != 'none':
-                    ydl_opts['format'] = str(selected_id)
-                else:
-                    if target_ext == 'mp4':
-                        audio_selector = 'bestaudio[ext=m4a]/bestaudio/best'
-                    elif target_ext == 'webm':
-                        audio_selector = 'bestaudio[ext=webm]/bestaudio/best'
-                    else:
-                        audio_selector = 'bestaudio/best'
-
-                    ydl_opts['format'] = f"{selected_id}+{audio_selector}"
-                    ydl_opts['merge_output_format'] = target_ext
-
-                if selected_format:
-                    width = selected_format.get('width')
-                    height = selected_format.get('height')
-                    resolution = f"{width}x{height}" if width and height else None
-
-                    codec = selected_format.get('vcodec_clean') or selected_format.get('vcodec')
-                    if codec and codec != 'none':
-                        codec = codec.split('.')[0]
-                    else:
-                        codec = None
-
-                    if resolution and codec:
-                        file_name_suffix = f"[{resolution} {codec}]"
-                    elif resolution:
-                        file_name_suffix = f"[{resolution}]"
-                    elif codec:
-                        file_name_suffix = f"[{codec}]"
-            else:
-                ydl_opts['format'] = 'bestvideo+bestaudio/best'
-                ydl_opts['merge_output_format'] = 'mp4'
-
-            if selected_subtitle is not None:
-                target_ext = 'mkv'
-                ydl_opts['merge_output_format'] = 'mkv'
-                ydl_opts['writesubtitles'] = True
-                ydl_opts['embedsubtitles'] = True
-                ydl_opts['writeautomaticsub'] = False
-                ydl_opts['subtitlesformat'] = 'srt/best'
-                ydl_opts['convertsubtitles'] = 'srt'
-                ydl_opts['keepvideo'] = True
-                ydl_opts['compat_opts'] = ['no-keep-subs']
-
-                postprocessors = ydl_opts.setdefault('postprocessors', [])
-                postprocessors.append({'key': 'FFmpegMetadata', 'add_chapters': True})
-                postprocessors.append({'key': 'EmbedThumbnail'})
-                postprocessors.append({'key': 'FFmpegEmbedSubtitle'})
-
-                if selected_subtitle == "__all__":
-                    ydl_opts['subtitleslangs'] = self.subtitle_languages
-                else:
-                    ydl_opts['subtitleslangs'] = [selected_subtitle]
+            target_ext, file_name_suffix = self._build_video_download_options(ydl_opts)
 
         self.btn_download.setEnabled(False)
         self.btn_cancel.setEnabled(True)
@@ -619,12 +664,17 @@ class MainWindow(QMainWindow):
             self.download_worker.cancel()
 
     def update_system_info(self):
-        import yt_dlp.version
+        if self._yt_dlp_version is None:
+            try:
+                import yt_dlp.version
+                self._yt_dlp_version = yt_dlp.version.__version__
+            except Exception:
+                self._yt_dlp_version = "unknown"
 
         ffmpeg_loc = get_ffmpeg_location()
         disk = get_disk_space(self.download_folder)
-        ver = yt_dlp.version.__version__
-        ff_stat = "✅ FFmpeg active" if ffmpeg_loc else "⚠️ FFmpeg missing"
+        ver = self._yt_dlp_version
+        ff_stat = "✅ FFmpeg active" if ffmpeg_loc is not False else "⚠️ FFmpeg missing"
         self.lbl_system_info.setText(f"{ff_stat}  |  ℹ️ yt-dlp v{ver}  |  💾 {disk}")
 
     def change_folder(self):
