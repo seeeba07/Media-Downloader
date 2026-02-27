@@ -5,7 +5,8 @@ import sys
 # Utility functions for Media Downloader, including FFmpeg location and size formatting.
 
 # Cache for FFmpeg location to avoid repeated disk I/O
-_CACHED_FFMPEG = None
+_UNSET = object()
+_CACHED_FFMPEG = _UNSET
 
 # Resource paths for PyInstaller
 def resource_path(relative_path):
@@ -18,7 +19,7 @@ def resource_path(relative_path):
 # FFmpeg location logic
 def get_ffmpeg_location():
     global _CACHED_FFMPEG
-    if _CACHED_FFMPEG:
+    if _CACHED_FFMPEG is not _UNSET:
         return _CACHED_FFMPEG
 
     if hasattr(sys, '_MEIPASS'):
@@ -45,6 +46,7 @@ def get_ffmpeg_location():
             _CACHED_FFMPEG = p
             return p
 
+    _CACHED_FFMPEG = False
     return False
 
 # Function to format byte sizes into human-readable strings
