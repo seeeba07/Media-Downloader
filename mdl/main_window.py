@@ -53,6 +53,7 @@ class MainWindow(QMainWindow):
         self.download_worker = None
         self.info_worker = None
         self._yt_dlp_version = None
+        self._app_version = None
 
         self.setup_ui()
         self.apply_stylesheet()
@@ -703,11 +704,20 @@ class MainWindow(QMainWindow):
             except Exception:
                 self._yt_dlp_version = "unknown"
 
+        if self._app_version is None:
+            try:
+                version_path = resource_path("VERSION.txt")
+                with open(version_path, "r", encoding="utf-8") as f:
+                    self._app_version = f.read().strip() or "unknown"
+            except Exception:
+                self._app_version = "unknown"
+
         ffmpeg_loc = get_ffmpeg_location()
         disk = get_disk_space(self.download_folder)
         ver = self._yt_dlp_version
         ff_stat = "✅ FFmpeg active" if ffmpeg_loc is not False else "⚠️ FFmpeg missing"
-        self.lbl_system_info.setText(f"{ff_stat}  |  ℹ️ yt-dlp v{ver}  |  💾 {disk}")
+        app_ver = self._app_version
+        self.lbl_system_info.setText(f"{ff_stat}  |  ℹ️ yt-dlp v{ver}  |  💾 {disk}  |  🛠️ Version {app_ver}")
 
     def change_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Folder")

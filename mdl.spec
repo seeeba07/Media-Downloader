@@ -5,7 +5,7 @@ a = Analysis(
     ['mdl\\app.py'],
     pathex=[],
     binaries=[('ffmpeg.exe', '.'), ('ffprobe.exe', '.')],
-    datas=[('icon.ico', '.')],
+    datas=[('icon.ico', '.'), ('VERSION.txt', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
