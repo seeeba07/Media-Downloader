@@ -11,9 +11,10 @@
 - Download videos in available formats and resolutions
 - Extract audio (MP3, M4A, FLAC, OPUS, WAV)
 - Ability to choose preferred framerate (if available)
-- System info display (FFmpeg status, yt-dlp version, disk space)
+- System info display (FFmpeg status, yt-dlp version, disk space, app version)
 - Customizable save location
 - Subtitle downloading (if available)
+- Playlist downloading support
 
 ## How to Use
 
