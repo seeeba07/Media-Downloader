@@ -13,3 +13,4 @@ dist/
 # Large binaries and tools (users should download these separately or use Releases)
 ffmpeg.exe
 ffprobe.exe
+commands.txt
