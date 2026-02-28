@@ -271,15 +271,53 @@ class UpdateWorker(QThread):
     finished_signal = pyqtSignal(str)
     error_signal = pyqtSignal(str)
 
+    def _resolve_python_command(self):
+        if not getattr(sys, "frozen", False):
+            return [sys.executable, "-m", "pip", "install", "-U", "yt-dlp"]
+
+        candidates = [
+            shutil.which("python"),
+            shutil.which("py"),
+        ]
+
+        app_dir = os.path.dirname(os.path.abspath(sys.executable))
+        bundled_python = os.path.join(app_dir, "python.exe")
+        if os.path.isfile(bundled_python):
+            candidates.insert(0, bundled_python)
+
+        for candidate in candidates:
+            if not candidate:
+                continue
+
+            if os.path.abspath(candidate) == os.path.abspath(sys.executable):
+                continue
+
+            return [candidate, "-m", "pip", "install", "-U", "yt-dlp"]
+
+        return None
+
     def run(self):
         import importlib
         import subprocess
 
         try:
+            command = self._resolve_python_command()
+            if not command:
+                self.error_signal.emit(
+                    "Cannot update yt-dlp in the installed app because no Python interpreter with pip was found. "
+                    "Install Python (or use source mode), or update the app to get a newer bundled yt-dlp version."
+                )
+                return
+
+            creationflags = 0
+            if os.name == "nt":
+                creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
             result = subprocess.run(
-                [sys.executable, "-m", "pip", "install", "-U", "yt-dlp"],
+                command,
                 capture_output=True,
                 text=True,
+                creationflags=creationflags,
             )
 
             combined_output = f"{result.stdout or ''}\n{result.stderr or ''}"

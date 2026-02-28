@@ -1,6 +1,7 @@
 import os
 import platform
 import subprocess
+import sys
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
@@ -160,6 +161,11 @@ class SettingsDialog(QDialog):
         update_row.addWidget(self.lbl_update_status, 1)
         maintenance_layout.addLayout(update_row)
 
+        self.lbl_update_hint = QLabel("")
+        self.lbl_update_hint.setWordWrap(True)
+        self.lbl_update_hint.setVisible(False)
+        maintenance_layout.addWidget(self.lbl_update_hint)
+
         logs_row = QHBoxLayout()
         btn_open_log_file = QPushButton("Open log file")
         btn_open_log_folder = QPushButton("Open log folder")
@@ -227,6 +233,7 @@ class SettingsDialog(QDialog):
             """
         )
         self.lbl_update_status.setStyleSheet(f"color: {muted_text}; font-weight: 600;")
+        self.lbl_update_hint.setStyleSheet(f"color: {muted_text};")
 
     def _load_values(self):
         values = self.settings_manager.load()
@@ -251,6 +258,14 @@ class SettingsDialog(QDialog):
         self.chk_minimize_to_tray.setChecked(values[SettingsManager.KEY_MINIMIZE_TO_TRAY])
         self.chk_tray_notifications.setChecked(values[SettingsManager.KEY_TRAY_NOTIFICATIONS])
         self.chk_include_auto_subs.setChecked(values[SettingsManager.KEY_INCLUDE_AUTO_SUBS])
+
+        if getattr(sys, "frozen", False):
+            self.lbl_update_hint.setText(
+                "Installed app note: Updating yt-dlp from Settings requires Python with pip installed on your system."
+            )
+            self.lbl_update_hint.setVisible(True)
+        else:
+            self.lbl_update_hint.setVisible(False)
 
     def _browse_default_folder(self):
         folder = QFileDialog.getExistingDirectory(self, "Select Folder", self.input_default_folder.text())
