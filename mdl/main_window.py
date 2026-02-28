@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QRadioButton,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
@@ -30,6 +31,7 @@ from .queue_manager import QueueManager
 from .queue_widget import QueueWidget
 from .settings_dialog import SettingsDialog
 from .settings_manager import SettingsManager
+from .tray_manager import TrayManager
 from .theme import get_theme_colors
 from .utils import get_disk_space, get_ffmpeg_location, resource_path
 from .workers import DownloadWorker, InfoWorker
@@ -80,9 +82,16 @@ class MainWindow(QMainWindow):
         self._current_theme = "dark"
         self._yt_dlp_version = None
         self._app_version = None
+        self._tray_close_notice_shown = False
+        self._force_app_quit = False
+        self.tray_manager = None
 
         self.setup_ui()
         self.apply_stylesheet(theme=saved_theme)
+        self.tray_manager = TrayManager(self, resource_path("assets/icon.ico"))
+        if self.tray_manager.available:
+            self.tray_manager.quit_requested.connect(self.on_tray_quit_requested)
+            self.tray_manager.show()
         self.apply_loaded_settings()
         self.update_system_info()
         self.update_output_indicator()
@@ -374,6 +383,15 @@ class MainWindow(QMainWindow):
     def on_url_change(self):
         self.fetch_timer.start(350)
         self._update_download_button_text()
+
+    def _is_tray_notification_enabled_and_hidden(self):
+        tray_enabled = self.settings_manager.get_tray_notifications()
+        hidden = self.isHidden() or (not self.isVisible())
+        return tray_enabled and hidden and self.tray_manager is not None and self.tray_manager.available
+
+    def _get_active_download_title(self):
+        title = str((self.video_info or {}).get("title") or "").strip()
+        return title or "Download"
 
     def start_status_animation(self, base_text):
         self._status_anim_base = base_text.rstrip(". ")
@@ -896,6 +914,12 @@ class MainWindow(QMainWindow):
         if not url:
             return
 
+        if self.tray_manager and self.tray_manager.available:
+            if self._queue_active:
+                self.tray_manager.set_status_queue(self.queue_manager.count_pending())
+            else:
+                self.tray_manager.set_status_downloading(self._get_active_download_title())
+
         is_audio = self.rb_audio.isChecked()
         playlist_mode = self.cb_download_playlist.isChecked()
 
@@ -962,6 +986,7 @@ class MainWindow(QMainWindow):
     def on_download_finished(self, msg):
         self.stop_status_animation()
         logger.info("Download finished: %s", msg)
+        notification_title = self._get_active_download_title()
         if self._queue_active and self._current_queue_index is not None:
             self.queue_manager.update_status(self._current_queue_index, "finished")
             self.queue_manager.update_progress(self._current_queue_index, 100)
@@ -975,14 +1000,24 @@ class MainWindow(QMainWindow):
         self.finish_download_ui()
         if self.settings_manager.get_show_notifications() and not self._queue_active:
             QMessageBox.information(self, "Finished", msg)
+
+        if not self._queue_active:
+            if self._is_tray_notification_enabled_and_hidden():
+                self.tray_manager.notify_download_complete(notification_title)
+            if self.tray_manager and self.tray_manager.available:
+                self.tray_manager.set_status_idle()
+
         self.update_system_info()
 
         if self._queue_active:
+            if self.tray_manager and self.tray_manager.available:
+                self.tray_manager.set_status_queue(self.queue_manager.count_pending())
             self.process_queue()
 
     def on_download_error(self, err):
         self.stop_status_animation()
         logger.warning("Download error: %s", err)
+        notification_title = self._get_active_download_title()
         if self._queue_active and self._current_queue_index is not None:
             lowered = (err or "").lower()
             is_cancel = "cancel" in lowered
@@ -998,10 +1033,18 @@ class MainWindow(QMainWindow):
         else:
             self.lbl_status.setText(err)
         self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #d98787;")
+
+        if self._is_tray_notification_enabled_and_hidden():
+            self.tray_manager.notify_download_error(notification_title, err)
+
         self.finish_download_ui()
 
         if self._queue_active:
+            if self.tray_manager and self.tray_manager.available:
+                self.tray_manager.set_status_queue(self.queue_manager.count_pending())
             self.process_queue()
+        elif self.tray_manager and self.tray_manager.available:
+            self.tray_manager.set_status_idle()
 
     def finish_download_ui(self):
         self.btn_download.setEnabled(True)
@@ -1148,6 +1191,8 @@ class MainWindow(QMainWindow):
 
     def on_queue_changed(self):
         self._update_download_button_text()
+        if self._queue_active and self.tray_manager and self.tray_manager.available:
+            self.tray_manager.set_status_queue(self.queue_manager.count_pending())
 
     def on_queue_expanded_changed(self, expanded):
         if expanded:
@@ -1186,6 +1231,47 @@ class MainWindow(QMainWindow):
             self.on_queue_changed()
             self.lbl_status.setText("Queue cleared.")
             self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #b8c2d1;")
+            if self.tray_manager and self.tray_manager.available:
+                self.tray_manager.set_status_idle()
+
+    def on_tray_quit_requested(self):
+        self._force_app_quit = True
+        self._queue_active = False
+        self._queue_cancel_requested = True
+        if self.download_worker:
+            self.download_worker.cancel()
+        if self.tray_manager:
+            self.tray_manager.shutdown()
+        QApplication.quit()
+
+    def closeEvent(self, event):
+        tray_available = bool(self.tray_manager and self.tray_manager.available and QSystemTrayIcon.isSystemTrayAvailable())
+        minimize_to_tray = self.settings_manager.get_minimize_to_tray()
+
+        if self._force_app_quit:
+            if self.tray_manager:
+                self.tray_manager.shutdown()
+            event.accept()
+            return
+
+        if minimize_to_tray and tray_available:
+            event.ignore()
+            self.hide()
+            if not self._tray_close_notice_shown:
+                self.tray_manager.tray_icon.showMessage(
+                    "Media Downloader",
+                    "Media Downloader is still running in the system tray.",
+                    QSystemTrayIcon.MessageIcon.Information,
+                    4000,
+                )
+                self._tray_close_notice_shown = True
+            return
+
+        self._force_app_quit = True
+        if self.tray_manager:
+            self.tray_manager.shutdown()
+        event.accept()
+        QApplication.quit()
 
     def _cancel_all_pending_queue_items(self):
         for item in self.queue_manager.get_all():
@@ -1223,6 +1309,12 @@ class MainWindow(QMainWindow):
             self.lbl_status.setText(summary_text)
             self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #b8c2d1;")
             self.btn_cancel.setEnabled(False)
+
+            if self._is_tray_notification_enabled_and_hidden():
+                self.tray_manager.notify_queue_complete(done, failed, cancelled)
+            if self.tray_manager and self.tray_manager.available:
+                self.tray_manager.set_status_idle()
+
             self._update_download_button_text()
             return
 
@@ -1241,6 +1333,8 @@ class MainWindow(QMainWindow):
 
         self.btn_cancel.setEnabled(True)
         self.btn_cancel.setText("CANCEL (Shift=All)")
+        if self.tray_manager and self.tray_manager.available:
+            self.tray_manager.set_status_queue(self.queue_manager.count_pending())
         self.start_fetch_info()
 
     def _update_download_button_text(self):
