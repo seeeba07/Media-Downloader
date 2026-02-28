@@ -4,9 +4,10 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QEvent, Qt, QTimer
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QCheckBox,
     QComboBox,
@@ -24,6 +25,10 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 from .config import AUDIO_FORMATS, LANGUAGE_NAMES
+from .logger import logger
+from .settings_dialog import SettingsDialog
+from .settings_manager import SettingsManager
+from .theme import get_theme_colors
 from .utils import get_disk_space, get_ffmpeg_location, resource_path
 from .workers import DownloadWorker, InfoWorker
 
@@ -46,20 +51,31 @@ class MainWindow(QMainWindow):
         self.video_info = {}
         self.video_formats = []
         self.subtitle_languages = []
+        self.auto_subtitle_languages = []
 
         self.fetch_timer = QTimer()
         self.fetch_timer.setSingleShot(True)
         self.fetch_timer.timeout.connect(self.start_fetch_info)
 
+        self.status_anim_timer = QTimer()
+        self.status_anim_timer.setInterval(450)
+        self.status_anim_timer.timeout.connect(self._tick_status_animation)
+        self._status_anim_base = ""
+        self._status_anim_step = 0
+
         self.download_worker = None
         self.info_worker = None
+        self.settings_manager = SettingsManager()
+        saved_theme = self.settings_manager.get_theme()
+        self.current_settings = self.settings_manager.load()
+        self._current_theme = "dark"
         self._yt_dlp_version = None
         self._app_version = None
 
         self.setup_ui()
-        self.apply_stylesheet()
+        self.apply_stylesheet(theme=saved_theme)
+        self.apply_loaded_settings()
         self.update_system_info()
-        self.update_ui_state()
         self.update_output_indicator()
 
     def setup_ui(self):
@@ -82,12 +98,18 @@ class MainWindow(QMainWindow):
         self.btn_help.setFixedSize(30, 30)
         self.btn_help.clicked.connect(self.show_app_help)
 
+        self.btn_settings = QPushButton("⚙")
+        self.btn_settings.setFixedSize(30, 30)
+        self.btn_settings.setToolTip("Open settings")
+        self.btn_settings.clicked.connect(self.open_settings_dialog)
+
         left_header_spacer = QWidget()
-        left_header_spacer.setFixedSize(30, 30)
+        left_header_spacer.setFixedSize(60, 30)
         header_layout.addWidget(left_header_spacer)
         header_layout.addStretch()
         header_layout.addWidget(title_lbl)
         header_layout.addStretch()
+        header_layout.addWidget(self.btn_settings)
         header_layout.addWidget(self.btn_help)
         layout.addLayout(header_layout)
 
@@ -107,7 +129,10 @@ class MainWindow(QMainWindow):
         url_layout.addWidget(self.fetch_btn)
         layout.addLayout(url_layout)
 
-        # Top settings: Type + Playlist
+        # Top settings: Type + Playlist + Output
+        top_settings_row = QHBoxLayout()
+        top_settings_row.setSpacing(8)
+
         settings_frame = QFrame()
         settings_frame.setObjectName("SettingsFrame")
         settings_layout = QHBoxLayout(settings_frame)
@@ -135,14 +160,21 @@ class MainWindow(QMainWindow):
 
         settings_layout.addStretch()
 
+        output_frame = QFrame()
+        output_frame.setObjectName("SettingsFrame")
+        output_frame.setFixedWidth(130)
+        output_layout = QHBoxLayout(output_frame)
+        output_layout.setContentsMargins(10, 8, 10, 8)
+
         self.lbl_output_indicator = QLabel("Output: -")
         self.lbl_output_indicator.setObjectName("OutputIndicator")
-        self.lbl_output_indicator.setFixedWidth(220)
-        self.lbl_output_indicator.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
+        self.lbl_output_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_output_indicator.setToolTip("Shows the final output extension.")
-        settings_layout.addWidget(self.lbl_output_indicator)
+        output_layout.addWidget(self.lbl_output_indicator)
 
-        layout.addWidget(settings_frame)
+        top_settings_row.addWidget(settings_frame, 1)
+        top_settings_row.addWidget(output_frame)
+        layout.addLayout(top_settings_row)
 
         # Lower settings: format / fps / quality / subtitles
         options_frame = QFrame()
@@ -258,33 +290,20 @@ class MainWindow(QMainWindow):
         btn_layout.addWidget(self.btn_cancel, 1)
         layout.addLayout(btn_layout)
 
-    def apply_stylesheet(self):
-        is_light_mode = self.palette().color(self.backgroundRole()).lightness() > 128
-        accent_color = "#5aa9ff"
-        accent_soft = "#3f6d9e"
+    def apply_stylesheet(self, theme=None):
+        colors = get_theme_colors(theme, self.palette())
+        self._current_theme = colors["resolved_theme"]
 
-        if is_light_mode:
-            # Light mode colors
-            bg_color = "#f5f5f5"
-            text_color = "#000000"
-            border_color = "#c7ced8"
-            input_bg = "#ffffff"
-            btn_bg = "#e7ebf0"
-            btn_hover = "#dde4ec"
-            btn_text = "#000000"
-            muted_text = "#5e6a78"
-            placeholder = "#7e8793"
-        else:
-            # Dark mode colors
-            bg_color = "#25282e"
-            text_color = "#e5e9ef"
-            border_color = "#4a5260"
-            input_bg = "#31363f"
-            btn_bg = "#3b424d"
-            btn_hover = "#495261"
-            btn_text = "#ffffff"
-            muted_text = "#97a3b3"
-            placeholder = "#7f8b9a"
+        bg_color = colors["bg_color"]
+        text_color = colors["text_color"]
+        border_color = colors["border_color"]
+        input_bg = colors["input_bg"]
+        btn_bg = colors["btn_bg"]
+        btn_hover = colors["btn_hover"]
+        btn_text = colors["btn_text"]
+        muted_text = colors["muted_text"]
+        placeholder = colors["placeholder"]
+        accent_color = colors["accent_color"]
 
         stylesheet = f"""
             QMainWindow {{ background-color: {bg_color}; }}
@@ -297,6 +316,13 @@ class MainWindow(QMainWindow):
             QComboBox {{ background-color: {input_bg}; border: 1px solid {border_color}; border-radius: 5px; padding: 6px; color: {text_color}; }}
             QComboBox:focus {{ border: 1px solid {accent_color}; }}
             QComboBox::drop-down {{ border: 0px; }}
+            QComboBox QAbstractItemView {{
+                background-color: {input_bg};
+                color: {text_color};
+                border: 1px solid {border_color};
+                selection-background-color: {accent_color};
+                selection-color: #ffffff;
+            }}
             QPushButton {{
                 background-color: {btn_bg};
                 color: {btn_text};
@@ -323,13 +349,33 @@ class MainWindow(QMainWindow):
     def on_url_change(self):
         self.fetch_timer.start(350)
 
+    def start_status_animation(self, base_text):
+        self._status_anim_base = base_text.rstrip(". ")
+        self._status_anim_step = 0
+        if not self.status_anim_timer.isActive():
+            self.status_anim_timer.start()
+        self._tick_status_animation()
+
+    def stop_status_animation(self):
+        if self.status_anim_timer.isActive():
+            self.status_anim_timer.stop()
+        self._status_anim_base = ""
+        self._status_anim_step = 0
+
+    def _tick_status_animation(self):
+        if not self._status_anim_base:
+            return
+        dots = "." * ((self._status_anim_step % 3) + 1)
+        self.lbl_status.setText(f"{self._status_anim_base}{dots}")
+        self._status_anim_step += 1
+
     def start_fetch_info(self):
         url = self.url_input.text().strip()
         if not url or (not url.startswith("http") and "www" not in url):
             return
 
-        self.lbl_status.setText("Fetching information...")
         self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #b8c2d1;")
+        self.start_status_animation("Fetching information")
         self.fetch_btn.setEnabled(False)
         self.btn_download.setEnabled(False)
 
@@ -338,32 +384,56 @@ class MainWindow(QMainWindow):
         self.info_worker.error_signal.connect(self.on_info_error)
         self.info_worker.start()
 
-    def on_info_fetched(self, info, formats, subtitle_languages):
+    def on_info_fetched(self, info, formats, subtitle_languages, auto_subtitle_languages):
+        self.stop_status_animation()
         self.video_info = info
         self.video_formats = formats
-        self.subtitle_languages = subtitle_languages
-        self.set_subtitle_options(subtitle_languages)
+        self.subtitle_languages = [
+            lang for lang in subtitle_languages
+            if self._is_supported_subtitle_language(lang)
+        ]
+        self.auto_subtitle_languages = [
+            lang for lang in auto_subtitle_languages
+            if self._is_supported_subtitle_language(lang)
+        ]
+        self.set_subtitle_options(self.subtitle_languages, self.auto_subtitle_languages)
         self.lbl_status.setText(f"Loaded: {info.get('title')}")
         self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #9cc06b;")
         self.fetch_btn.setEnabled(True)
         self.update_ui_state()
 
     def on_info_error(self, err):
+        self.stop_status_animation()
+        logger.warning("Info fetch error: %s", err)
         self.lbl_status.setText(f"Error: {err[:50]}...")
         self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #d98787;")
         self.fetch_btn.setEnabled(True)
         self.subtitle_languages = []
-        self.set_subtitle_options([])
+        self.auto_subtitle_languages = []
+        self.set_subtitle_options([], [])
 
-    def set_subtitle_options(self, subtitle_languages):
+    def set_subtitle_options(self, subtitle_languages, auto_subtitle_languages=None):
+        if auto_subtitle_languages is None:
+            auto_subtitle_languages = []
+
+        include_auto_subs = self.settings_manager.get_include_auto_subs()
+        if not include_auto_subs:
+            auto_subtitle_languages = []
+
         self.cb_subtitles.blockSignals(True)
         self.cb_subtitles.clear()
         self.cb_subtitles.addItem("None", None)
 
-        if subtitle_languages:
+        has_any_subtitles = bool(subtitle_languages or auto_subtitle_languages)
+        if has_any_subtitles:
             self.cb_subtitles.addItem("All available", "__all__")
             for lang in subtitle_languages:
-                self.cb_subtitles.addItem(self.get_language_display_name(lang), lang)
+                self.cb_subtitles.addItem(self.get_language_display_name(lang), ("manual", lang))
+
+            for lang in auto_subtitle_languages:
+                if lang in subtitle_languages:
+                    continue
+                self.cb_subtitles.addItem(f"{self.get_language_display_name(lang)} [auto]", ("auto", lang))
 
         self.cb_subtitles.blockSignals(False)
         self.update_output_indicator()
@@ -375,6 +445,10 @@ class MainWindow(QMainWindow):
         if language_name:
             return f"{language_name} ({language_code})"
         return language_code.upper()
+
+    def _is_supported_subtitle_language(self, language_code):
+        base_code = language_code.lower().split("-")[0].split("_")[0]
+        return base_code in LANGUAGE_NAMES
 
     def update_ui_state(self):
         is_audio = self.rb_audio.isChecked()
@@ -545,6 +619,46 @@ class MainWindow(QMainWindow):
         )
         QMessageBox.information(self, "App Help", help_text)
 
+    def open_settings_dialog(self):
+        current_theme = self.settings_manager.get_theme()
+        dialog = SettingsDialog(self.settings_manager, self, current_theme=current_theme)
+        if dialog.exec():
+            new_theme = self.settings_manager.get_theme()
+            self.apply_stylesheet(theme=new_theme)
+            self.apply_loaded_settings()
+            self.update_system_info()
+
+    def apply_loaded_settings(self):
+        self.current_settings = self.settings_manager.load()
+
+        self.download_folder = self.current_settings[SettingsManager.KEY_DEFAULT_FOLDER]
+        if hasattr(self, 'lbl_folder'):
+            self.lbl_folder.setText(self.download_folder)
+
+        default_mode = self.current_settings[SettingsManager.KEY_DEFAULT_MODE]
+        if default_mode == "Audio":
+            self.rb_audio.setChecked(True)
+        else:
+            self.rb_video.setChecked(True)
+
+        self.update_ui_state()
+
+        if self.rb_audio.isChecked():
+            default_format = self.current_settings[SettingsManager.KEY_DEFAULT_AUDIO_FORMAT]
+            default_bitrate = self.current_settings[SettingsManager.KEY_DEFAULT_AUDIO_BITRATE]
+
+            format_index = self.cb_format.findText(default_format)
+            if format_index >= 0:
+                self.cb_format.setCurrentIndex(format_index)
+
+            bitrate_index = self.cb_quality.findData(default_bitrate)
+            if bitrate_index >= 0:
+                self.cb_quality.setCurrentIndex(bitrate_index)
+
+        self.set_subtitle_options(self.subtitle_languages, self.auto_subtitle_languages)
+
+        self.update_output_indicator()
+
     def _build_base_ydl_opts(self, temp_dir, playlist_mode):
         if playlist_mode:
             outtmpl = os.path.join(
@@ -569,6 +683,10 @@ class MainWindow(QMainWindow):
         loc_ffmpeg = get_ffmpeg_location()
         if loc_ffmpeg:
             ydl_opts['ffmpeg_location'] = loc_ffmpeg
+
+        speed_limit_kb = self.settings_manager.get_speed_limit()
+        if speed_limit_kb > 0:
+            ydl_opts['ratelimit'] = speed_limit_kb * 1024
 
         return ydl_opts
 
@@ -630,10 +748,24 @@ class MainWindow(QMainWindow):
         if selected_subtitle is None:
             return None
 
+        selected_languages = []
+        include_auto_subs = self.settings_manager.get_include_auto_subs()
+
+        if selected_subtitle == "__all__":
+            all_languages = list(self.subtitle_languages)
+            if include_auto_subs:
+                all_languages.extend(self.auto_subtitle_languages)
+            selected_languages = sorted(set(all_languages))
+        elif isinstance(selected_subtitle, tuple):
+            _, language_code = selected_subtitle
+            selected_languages = [language_code]
+        else:
+            selected_languages = [selected_subtitle]
+
         ydl_opts['merge_output_format'] = 'mkv'
         ydl_opts['writesubtitles'] = True
         ydl_opts['embedsubtitles'] = True
-        ydl_opts['writeautomaticsub'] = False
+        ydl_opts['writeautomaticsub'] = include_auto_subs
         ydl_opts['subtitlesformat'] = 'srt/best'
         ydl_opts['convertsubtitles'] = 'srt'
         ydl_opts['keepvideo'] = True
@@ -644,10 +776,7 @@ class MainWindow(QMainWindow):
         postprocessors.append({'key': 'EmbedThumbnail'})
         postprocessors.append({'key': 'FFmpegEmbedSubtitle'})
 
-        if selected_subtitle == "__all__":
-            ydl_opts['subtitleslangs'] = self.subtitle_languages
-        else:
-            ydl_opts['subtitleslangs'] = [selected_subtitle]
+        ydl_opts['subtitleslangs'] = selected_languages
 
         return 'mkv'
 
@@ -709,12 +838,22 @@ class MainWindow(QMainWindow):
         else:
             target_ext, file_name_suffix = self._build_video_download_options(ydl_opts)
 
+        logger.info(
+            "Download started: url=%s type=%s playlist=%s target_ext=%s folder=%s",
+            url,
+            "audio" if is_audio else "video",
+            playlist_mode,
+            target_ext,
+            self.download_folder,
+        )
+
         self.btn_download.setEnabled(False)
         self.btn_cancel.setEnabled(True)
+        self.btn_settings.setEnabled(False)
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
-        self.lbl_status.setText("Starting download...")
         self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #b8c2d1;")
+        self.start_status_animation("Starting download")
 
         self.download_worker = DownloadWorker(
             url,
@@ -732,16 +871,26 @@ class MainWindow(QMainWindow):
 
     def update_progress(self, percent, text):
         self.progress_bar.setValue(int(percent))
+        if text == "Processing / Converting...":
+            self.start_status_animation("Processing / Converting")
+            return
+
+        self.stop_status_animation()
         self.lbl_status.setText(text)
 
     def on_download_finished(self, msg):
+        self.stop_status_animation()
+        logger.info("Download finished: %s", msg)
         self.lbl_status.setText(msg)
         self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #8fbf8f;")
         self.finish_download_ui()
-        QMessageBox.information(self, "Finished", msg)
+        if self.settings_manager.get_show_notifications():
+            QMessageBox.information(self, "Finished", msg)
         self.update_system_info()
 
     def on_download_error(self, err):
+        self.stop_status_animation()
+        logger.warning("Download error: %s", err)
         self.lbl_status.setText(err)
         self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #d98787;")
         self.finish_download_ui()
@@ -749,11 +898,33 @@ class MainWindow(QMainWindow):
     def finish_download_ui(self):
         self.btn_download.setEnabled(True)
         self.btn_cancel.setEnabled(False)
+        self.btn_settings.setEnabled(True)
         self.progress_bar.setVisible(False)
 
     def cancel_download(self):
         if self.download_worker:
             self.download_worker.cancel()
+
+    def event(self, event):
+        if event.type() == QEvent.Type.WindowActivate:
+            QTimer.singleShot(0, self.try_auto_paste_url)
+        return super().event(event)
+
+    def try_auto_paste_url(self):
+        if not self.settings_manager.get_clipboard_autopaste():
+            return
+
+        if self.url_input.text().strip():
+            return
+
+        clipboard = QApplication.clipboard()
+        clip_text = (clipboard.text() or "").strip()
+        if clip_text.startswith("http") or clip_text.startswith("www"):
+            self.url_input.setText(clip_text)
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self.try_auto_paste_url()
 
     def update_system_info(self):
         if self._yt_dlp_version is None:
@@ -772,6 +943,13 @@ class MainWindow(QMainWindow):
                 self._app_version = "unknown"
 
         ffmpeg_loc = get_ffmpeg_location()
+        if ffmpeg_loc is False:
+            logger.info("FFmpeg detection result: missing")
+        elif ffmpeg_loc is None:
+            logger.info("FFmpeg detection result: available via PATH")
+        else:
+            logger.info("FFmpeg detection result: %s", ffmpeg_loc)
+
         disk = get_disk_space(self.download_folder)
         ver = self._yt_dlp_version
         ff_stat = "✅ FFmpeg active" if ffmpeg_loc is not False else "⚠️ FFmpeg missing"
@@ -783,6 +961,7 @@ class MainWindow(QMainWindow):
         if folder:
             self.download_folder = folder
             self.lbl_folder.setText(folder)
+            logger.info("Download folder changed: %s", folder)
             self.update_system_info()
 
     def open_folder(self):
@@ -793,3 +972,4 @@ class MainWindow(QMainWindow):
                 subprocess.Popen(["open", self.download_folder])
             else:
                 subprocess.Popen(["xdg-open", self.download_folder])
+
