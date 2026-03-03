@@ -226,8 +226,7 @@ class QueueWidget(QWidget):
         )
 
     def _pending_downloading_count(self):
-        items = self.queue_manager.get_all()
-        return sum(1 for item in items if item["status"] in {"pending", "downloading"})
+        return self.queue_manager.count_pending_or_downloading()
 
     def _update_toggle_text(self):
         count = self._pending_downloading_count()
@@ -243,7 +242,16 @@ class QueueWidget(QWidget):
 
     def add_item(self, url, mode, options=None):
         index = self.queue_manager.add(url, mode, options=options)
-        self.refresh()
+
+        items = self.queue_manager.get_all()
+        expected_new_index = len(items) - 1
+        if index != expected_new_index or len(self._row_widgets) != expected_new_index:
+            self.refresh()
+        else:
+            self._append_row(index, items[index])
+            self._update_toggle_text()
+            self._update_total_height()
+
         self.queue_changed.emit()
         return index
 
@@ -314,58 +322,77 @@ class QueueWidget(QWidget):
             if widget is not None:
                 widget.deleteLater()
 
+    def _item_progress_text(self, item):
+        if item["status"] == "downloading":
+            return f"{int(item.get('progress', 0))}%"
+        return ""
+
+    def _create_row_widgets(self, index, item):
+        row = QWidget()
+        row.setObjectName("QueueItemRow")
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(8, 6, 8, 6)
+        row_layout.setSpacing(8)
+
+        status = item["status"]
+        title = item.get("title", item["url"])
+        summary = self._build_item_summary(item)
+        progress_text = self._item_progress_text(item)
+        remove_enabled = status in {"pending", "finished", "error"}
+
+        icon_label = QLabel(self._status_icon(status))
+        icon_label.setFixedWidth(22)
+
+        title_label = QLabel()
+        title_label.setObjectName("QueueTitleLabel")
+        title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self._set_elided_title(title_label, title)
+
+        summary_label = QLabel(summary)
+        summary_label.setObjectName("QueueSummaryLabel")
+        summary_label.setFixedWidth(180)
+        summary_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+        progress_label = QLabel(progress_text)
+        progress_label.setFixedWidth(40)
+        progress_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        remove_button = QPushButton("✕")
+        remove_button.setObjectName("QueueRemoveButton")
+        remove_button.setFixedSize(20, 20)
+        remove_button.clicked.connect(lambda _, i=index: self._remove_item(i))
+        remove_button.setEnabled(remove_enabled)
+
+        row_layout.addWidget(icon_label)
+        row_layout.addWidget(title_label, 1)
+        row_layout.addWidget(summary_label)
+        row_layout.addWidget(progress_label)
+        row_layout.addWidget(remove_button)
+
+        return row, {
+            "icon": icon_label,
+            "title": title_label,
+            "summary": summary_label,
+            "progress": progress_label,
+            "remove": remove_button,
+            "last_status": status,
+            "last_title": title,
+            "last_summary": summary,
+            "last_progress": progress_text,
+            "last_remove_enabled": remove_enabled,
+        }
+
+    def _append_row(self, index, item):
+        row_widget, row_state = self._create_row_widgets(index, item)
+        self.items_layout.insertWidget(self.items_layout.count() - 1, row_widget)
+        self._row_widgets[index] = row_state
+
     def refresh(self):
         self._clear_rows()
         items = self.queue_manager.get_all()
 
         for index, item in enumerate(items):
-            row = QWidget()
-            row.setObjectName("QueueItemRow")
-            row_layout = QHBoxLayout(row)
-            row_layout.setContentsMargins(8, 6, 8, 6)
-            row_layout.setSpacing(8)
-
-            icon_label = QLabel(self._status_icon(item["status"]))
-            icon_label.setFixedWidth(22)
-
-            title_label = QLabel()
-            title_label.setObjectName("QueueTitleLabel")
-            title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
-            self._set_elided_title(title_label, item.get("title", item["url"]))
-
-            summary_label = QLabel(self._build_item_summary(item))
-            summary_label.setObjectName("QueueSummaryLabel")
-            summary_label.setFixedWidth(180)
-            summary_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
-
-            progress_label = QLabel()
-            progress_label.setFixedWidth(40)
-            progress_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            if item["status"] == "downloading":
-                progress_label.setText(f"{int(item.get('progress', 0))}%")
-            else:
-                progress_label.setText("")
-
-            remove_button = QPushButton("✕")
-            remove_button.setObjectName("QueueRemoveButton")
-            remove_button.setFixedSize(20, 20)
-            remove_button.clicked.connect(lambda _, i=index: self._remove_item(i))
-            remove_button.setEnabled(item["status"] in {"pending", "finished", "error"})
-
-            row_layout.addWidget(icon_label)
-            row_layout.addWidget(title_label, 1)
-            row_layout.addWidget(summary_label)
-            row_layout.addWidget(progress_label)
-            row_layout.addWidget(remove_button)
-
-            self.items_layout.insertWidget(self.items_layout.count() - 1, row)
-            self._row_widgets[index] = {
-                "icon": icon_label,
-                "title": title_label,
-                "summary": summary_label,
-                "progress": progress_label,
-                "remove": remove_button,
-            }
+            self._append_row(index, item)
 
         self._update_toggle_text()
         self._update_total_height()
@@ -382,14 +409,30 @@ class QueueWidget(QWidget):
             return
 
         item = item_list[index]
-        row["icon"].setText(self._status_icon(item["status"]))
-        self._set_elided_title(row["title"], item.get("title", item["url"]))
-        row["summary"].setText(self._build_item_summary(item))
+        status = item["status"]
+        title = item.get("title", item["url"])
+        summary = self._build_item_summary(item)
+        progress_text = self._item_progress_text(item)
+        remove_enabled = status in {"pending", "finished", "error"}
 
-        if item["status"] == "downloading":
-            row["progress"].setText(f"{int(item.get('progress', 0))}%")
-        else:
-            row["progress"].setText("")
+        if row["last_status"] != status:
+            row["icon"].setText(self._status_icon(status))
+            row["last_status"] = status
 
-        row["remove"].setEnabled(item["status"] in {"pending", "finished", "error"})
+        if row["last_title"] != title:
+            self._set_elided_title(row["title"], title)
+            row["last_title"] = title
+
+        if row["last_summary"] != summary:
+            row["summary"].setText(summary)
+            row["last_summary"] = summary
+
+        if row["last_progress"] != progress_text:
+            row["progress"].setText(progress_text)
+            row["last_progress"] = progress_text
+
+        if row["last_remove_enabled"] != remove_enabled:
+            row["remove"].setEnabled(remove_enabled)
+            row["last_remove_enabled"] = remove_enabled
+
         self._update_toggle_text()
