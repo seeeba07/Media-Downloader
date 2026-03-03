@@ -1,6 +1,5 @@
 # This file is the main entry point for the application.
 # It sets up the environment and launches the main window of the application.
-# 
 
 import sys
 from pathlib import Path
