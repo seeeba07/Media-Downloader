@@ -2,6 +2,7 @@ import os
 import platform
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 from PyQt6.QtCore import QEvent, Qt, QTimer
@@ -58,6 +59,10 @@ class MainWindow(QMainWindow):
         self.video_formats = []
         self.subtitle_languages = []
         self.auto_subtitle_languages = []
+        self._formats_by_id = {}
+        self._formats_by_ext_codec = {}
+        self._fps_by_ext_codec = {}
+        self._video_format_combo_items = []
 
         self.fetch_timer = QTimer()
         self.fetch_timer.setSingleShot(True)
@@ -76,6 +81,8 @@ class MainWindow(QMainWindow):
         self._current_queue_index = None
         self._queue_summary = {"finished": 0, "error": 0, "cancelled": 0}
         self._queue_cancel_requested = False
+        self._last_queue_ui_update_time = 0.0
+        self._last_queue_ui_progress = -1.0
         self.settings_manager = SettingsManager()
         saved_theme = self.settings_manager.get_theme()
         self.current_settings = self.settings_manager.load()
@@ -436,6 +443,7 @@ class MainWindow(QMainWindow):
         self.info_worker = None
         self.video_info = info
         self.video_formats = formats
+        self._index_video_formats()
         self.subtitle_languages = [
             lang for lang in subtitle_languages
             if self._is_supported_subtitle_language(lang)
@@ -471,6 +479,10 @@ class MainWindow(QMainWindow):
         self.lbl_status.setText(f"Error: {err[:50]}...")
         self.lbl_status.setStyleSheet("font-size: 15px; font-weight: 600; color: #d98787;")
         self.fetch_btn.setEnabled(True)
+        self._formats_by_id = {}
+        self._formats_by_ext_codec = {}
+        self._fps_by_ext_codec = {}
+        self._video_format_combo_items = []
         self.subtitle_languages = []
         self.auto_subtitle_languages = []
         self.set_subtitle_options([], [])
@@ -521,6 +533,36 @@ class MainWindow(QMainWindow):
         base_code = language_code.lower().split("-")[0].split("_")[0]
         return base_code in LANGUAGE_NAMES
 
+    def _index_video_formats(self):
+        self._formats_by_id = {}
+        self._formats_by_ext_codec = {}
+        self._fps_by_ext_codec = {}
+        combo_items = {}
+
+        for fmt in self.video_formats:
+            format_id = fmt.get("format_id")
+            if format_id is not None:
+                self._formats_by_id[str(format_id)] = fmt
+
+            ext = fmt.get("ext")
+            codec = fmt.get("vcodec_clean")
+            if not ext or not codec:
+                continue
+
+            key = (ext, codec)
+            self._formats_by_ext_codec.setdefault(key, []).append(fmt)
+            self._fps_by_ext_codec.setdefault(key, set()).add(fmt.get("fps_rounded", 0))
+            combo_items[key] = f"{ext} ({codec})"
+
+        self._video_format_combo_items = sorted(
+            ((display_text, key) for key, display_text in combo_items.items()),
+            key=lambda item: item[0],
+        )
+
+        for key, formats in self._formats_by_ext_codec.items():
+            formats.sort(key=lambda item: item.get("height", 0), reverse=True)
+            self._fps_by_ext_codec[key] = sorted(self._fps_by_ext_codec[key], reverse=True)
+
     def update_ui_state(self):
         is_audio = self.rb_audio.isChecked()
 
@@ -570,20 +612,7 @@ class MainWindow(QMainWindow):
         self.update_output_indicator()
 
     def populate_video_formats(self):
-        unique_formats = set()
-        combo_items = []
-
-        for f in self.video_formats:
-            ext = f.get('ext')
-            codec = f.get('vcodec_clean')
-            key = (ext, codec)
-            if key not in unique_formats:
-                unique_formats.add(key)
-                display_text = f"{ext} ({codec})"
-                combo_items.append((display_text, key))
-
-        combo_items.sort(key=lambda x: x[0])
-        for text, data in combo_items:
+        for text, data in self._video_format_combo_items:
             self.cb_format.addItem(text, data)
         self.on_format_changed()
 
@@ -598,13 +627,7 @@ class MainWindow(QMainWindow):
             return
 
         sel_ext, sel_codec = selected_data
-        unique_fps = set()
-
-        for f in self.video_formats:
-            if f.get('ext') == sel_ext and f.get('vcodec_clean') == sel_codec:
-                unique_fps.add(f.get('fps_rounded', 0))
-
-        sorted_fps = sorted(list(unique_fps), reverse=True)
+        sorted_fps = self._fps_by_ext_codec.get((sel_ext, sel_codec), [])
         for fps in sorted_fps:
             self.cb_fps.addItem(str(fps), fps)
 
@@ -643,10 +666,7 @@ class MainWindow(QMainWindow):
             return
 
         sel_ext, sel_codec = selected_fmt_data
-        candidates = [
-            f for f in self.video_formats
-            if f.get('ext') == sel_ext and f.get('vcodec_clean') == sel_codec
-        ]
+        candidates = self._formats_by_ext_codec.get((sel_ext, sel_codec), [])
 
         res_groups = {}
         for f in candidates:
@@ -799,11 +819,7 @@ class MainWindow(QMainWindow):
         if selected_id is None:
             return None
 
-        selected_id_str = str(selected_id)
-        return next(
-            (f for f in self.video_formats if str(f.get('format_id')) == selected_id_str),
-            None,
-        )
+        return self._formats_by_id.get(str(selected_id))
 
     def _build_file_name_suffix(self, selected_format):
         if not selected_format:
@@ -974,7 +990,17 @@ class MainWindow(QMainWindow):
         self.progress_bar.setValue(int(percent))
         if self._queue_active and self._current_queue_index is not None:
             self.queue_manager.update_progress(self._current_queue_index, percent)
-            self.queue_widget.refresh_item(self._current_queue_index)
+            now = time.monotonic()
+            should_refresh_queue_item = (
+                self._last_queue_ui_update_time == 0.0
+                or (now - self._last_queue_ui_update_time) >= 0.4
+                or abs(percent - self._last_queue_ui_progress) >= 1.0
+                or percent >= 100
+            )
+            if should_refresh_queue_item:
+                self.queue_widget.refresh_item(self._current_queue_index)
+                self._last_queue_ui_update_time = now
+                self._last_queue_ui_progress = percent
 
         if text == "Processing / Converting...":
             self.start_status_animation("Processing / Converting")
@@ -1274,11 +1300,10 @@ class MainWindow(QMainWindow):
         QApplication.quit()
 
     def _cancel_all_pending_queue_items(self):
-        for item in self.queue_manager.get_all():
-            if item["status"] == "pending":
-                item["status"] = "cancelled"
-                self._queue_summary["cancelled"] += 1
-        self.queue_widget.refresh()
+        cancelled_count = self.queue_manager.cancel_all_pending()
+        if cancelled_count:
+            self._queue_summary["cancelled"] += cancelled_count
+            self.queue_widget.refresh()
 
     def _mark_current_queue_item_cancelled(self):
         if self._current_queue_index is None:
@@ -1320,6 +1345,8 @@ class MainWindow(QMainWindow):
 
         self._current_queue_index = next_index
         self._queue_cancel_requested = False
+        self._last_queue_ui_update_time = 0.0
+        self._last_queue_ui_progress = -1.0
         self.queue_manager.update_status(next_index, "downloading")
         self.queue_manager.update_progress(next_index, 0)
         self.queue_widget.refresh_item(next_index)
